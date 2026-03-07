@@ -1,0 +1,387 @@
+:root {
+  --mc-sky-top: #8ec7ff;
+  --mc-sky-bottom: #6aa6de;
+  --mc-grass: #4f8c2f;
+  --mc-dirt: #6c4a2a;
+  --mc-stone: #2e333d;
+  --mc-stone-edge: #181c22;
+  --mc-sand: #c6b48f;
+  --mc-sand-edge: #7f6644;
+  --mc-ink: #1b150d;
+  --mc-text-soft: #6b5a43;
+  --mc-user: #365f8d;
+  --mc-assistant: #2a2f39;
+  --mc-accent: #8ecf47;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--mc-ink);
+  font-family: "Minecraft", "Press Start 2P", "VT323", "Trebuchet MS", sans-serif;
+  background:
+    linear-gradient(180deg, var(--mc-sky-top) 0%, var(--mc-sky-bottom) 72%, var(--mc-grass) 72%, var(--mc-grass) 76%, var(--mc-dirt) 76%, var(--mc-dirt) 100%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.08) 0 2px, rgba(0, 0, 0, 0.05) 2px 4px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 2px, rgba(0, 0, 0, 0.05) 2px 4px);
+  background-attachment: fixed;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.panel {
+  background: var(--mc-sand);
+  border: 4px solid var(--mc-sand-edge);
+  border-radius: 0;
+  padding: 14px;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.18),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.2),
+    0 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.table th,
+.table td {
+  padding: 10px;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.15);
+  text-align: left;
+  font-size: 14px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 2px solid rgba(0, 0, 0, 0.25);
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 700;
+  background: #cbd5e1;
+}
+
+.badge.running {
+  background: #f6d66c;
+  color: #6d4b00;
+}
+
+.badge.completed {
+  background: #95d67f;
+  color: #1f4f1c;
+}
+
+.badge.failed {
+  background: #f59a8f;
+  color: #6a1d1d;
+}
+
+.code {
+  font-family: "Cascadia Mono", "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.thread-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+}
+
+.thread-header-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.thread-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.thread-meta-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--mc-text-soft);
+  font-size: 13px;
+}
+
+.thread-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.thread-btn {
+  border: 3px solid #2d3b1b;
+  border-radius: 0;
+  background: var(--mc-accent);
+  color: #122109;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+}
+
+.thread-btn:hover {
+  filter: brightness(1.06);
+}
+
+.thread-btn:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.25);
+  opacity: 0.7;
+}
+
+.live-dot {
+  border-radius: 0;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 2px solid rgba(0, 0, 0, 0.3);
+}
+
+.live-dot.online {
+  background: #95d67f;
+  color: #1f4f1c;
+}
+
+.live-dot.offline {
+  background: #f59a8f;
+  color: #6a1d1d;
+}
+
+.terminal-shell,
+.timeline-shell {
+  background: var(--mc-stone);
+  border: 4px solid var(--mc-stone-edge);
+  color: #f1f5f9;
+  padding: 0;
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.08),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.35);
+}
+
+.terminal-head,
+.timeline-head {
+  font-family: "Cascadia Mono", "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #cbd5e1;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.terminal-transcript {
+  font-family: "Cascadia Mono", "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  height: min(72vh, 780px);
+  overflow: auto;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.thread-composer {
+  display: grid;
+  gap: 8px;
+  border-top: 2px solid rgba(255, 255, 255, 0.1);
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.thread-composer-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.thread-input,
+.thread-textarea {
+  width: 100%;
+  border: 2px solid #4b5563;
+  border-radius: 0;
+  padding: 8px;
+  font-size: 13px;
+  background: #111827;
+  color: #e5e7eb;
+  font-family: "Cascadia Mono", "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+}
+
+.thread-textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.thread-run-error {
+  color: #fca5a5;
+}
+
+.stream-shell {
+  border-top: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.stream-head {
+  font-family: "Cascadia Mono", "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #cbd5e1;
+  padding: 8px 10px;
+}
+
+.stream-log {
+  margin: 0;
+  font-family: "Cascadia Mono", "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #d1d5db;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 0 10px 10px 10px;
+}
+
+.terminal-empty {
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.terminal-row {
+  display: grid;
+  gap: 6px;
+}
+
+.terminal-prefix,
+.terminal-footnote {
+  font-size: 11px;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.terminal-bubble {
+  margin: 0;
+  border-radius: 0;
+  border: 2px solid #4b5563;
+  background: var(--mc-assistant);
+  color: #f1f5f9;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+  font-size: 13px;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.terminal-bubble.user {
+  border-color: #7db2ee;
+  background: var(--mc-user);
+  color: #e8f3ff;
+}
+
+.terminal-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: #d9f99d;
+  animation: cursor-blink 1s step-end infinite;
+}
+
+@keyframes cursor-blink {
+  from,
+  to {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+.timeline-list {
+  max-height: min(72vh, 780px);
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.timeline-item {
+  border: 2px solid #4b5563;
+  border-radius: 0;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+  background: rgba(17, 24, 39, 0.72);
+}
+
+.timeline-type {
+  font-family: "Cascadia Mono", "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: #f1f5f9;
+}
+
+.timeline-time,
+.timeline-meta {
+  font-size: 11px;
+  color: #cbd5e1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1000px) {
+  .thread-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .terminal-transcript,
+  .timeline-list {
+    max-height: 55vh;
+  }
+}
+
+@media (max-width: 900px) {
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  main {
+    padding: 14px;
+  }
+}
