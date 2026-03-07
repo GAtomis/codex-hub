@@ -1,0 +1,15 @@
+{
+  "name": "codex-hub",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace @codex-hub/hub-backend",
+    "dev:agent": "npm run dev --workspace @codex-hub/project-agent",
+    "dev:frontend": "npm run dev --workspace @codex-hub/hub-frontend",
+    "build": "npm run build --workspaces",
+    "db:init": "node scripts/init-db.mjs"
+  }
+}
