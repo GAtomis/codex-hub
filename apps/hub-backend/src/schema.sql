@@ -4,7 +4,9 @@ CREATE TABLE IF NOT EXISTS projects (
   project_path TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'online',
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retired_at TIMESTAMPTZ,
+  retirement_mode TEXT
 );
 
 CREATE TABLE IF NOT EXISTS threads (
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS exec_audit_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_last_seen ON projects(last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_projects_status_retired ON projects(status, retired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_threads_project_updated ON threads(project_slug, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_turns_thread_updated ON turns(thread_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_project_ts ON events(project_slug, event_ts DESC);

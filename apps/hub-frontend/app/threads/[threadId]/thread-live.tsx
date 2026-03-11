@@ -6,6 +6,7 @@ import {
   fetchThreadEvents,
   fetchThreadMessages,
   streamThreadExec,
+  describeAppError,
   type EventItem,
   type ThreadExecStreamEvent,
   type ThreadMessage
@@ -139,7 +140,7 @@ export default function ThreadLive({ threadId }: Props) {
       setDisplayLengths((prev) => normalizeDisplayLengths(nextMessages, prev));
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "load_failed");
+      setError(describeAppError(err instanceof Error ? err.message : "load_failed"));
     } finally {
       setLoading(false);
     }
@@ -270,6 +271,20 @@ export default function ThreadLive({ threadId }: Props) {
     }),
     [messages]
   );
+
+  const projectSlug = useMemo(() => events[0]?.project_slug ?? null, [events]);
+
+  const firstUserPrompt = useMemo(
+    () => renderedMessages.find((item) => item.role === "user")?.text ?? optimisticUser?.text ?? null,
+    [optimisticUser, renderedMessages]
+  );
+
+  const latestAssistantMessage = useMemo(
+    () => [...renderedMessages].reverse().find((item) => item.role === "assistant")?.text ?? null,
+    [renderedMessages]
+  );
+
+  const completedEvents = useMemo(() => events.filter((event) => event.status === "completed").length, [events]);
 
   const onStreamEvent = useCallback(
     (event: ThreadExecStreamEvent): void => {
@@ -434,7 +449,7 @@ export default function ThreadLive({ threadId }: Props) {
       await refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : "stream_failed";
-      setRunError(message);
+      setRunError(describeAppError(message));
       setStreamLog((prev) => appendChunk(prev, `\n[request_failed] ${message}\n`));
     } finally {
       setSending(false);
@@ -450,20 +465,51 @@ export default function ThreadLive({ threadId }: Props) {
 
   return (
     <main className="grid" style={{ gap: 20 }}>
-      <div>
-        <Link href="/">返回总览</Link>
+      <div className="mc-action-row">
+        <Link href="/" className="mc-button ghost">
+          返回总览
+        </Link>
+        {projectSlug ? (
+          <Link href={`/projects/${encodeURIComponent(projectSlug)}`} className="mc-button secondary">
+            返回项目工作台
+          </Link>
+        ) : null}
       </div>
 
-      <section className="panel thread-header-panel">
-        <div className="thread-title-row">
-          <h1 style={{ margin: 0 }}>Thread: {threadId}</h1>
-          <span className={`live-dot ${liveConnected ? "online" : "offline"}`}>{liveConnected ? "LIVE" : "RECONNECTING"}</span>
+      <section className="panel mc-hero thread-header-panel">
+        <div className="mc-hero-head">
+          <div className="grid" style={{ gap: 10 }}>
+            <div className="mc-chip-row">
+              <span className={`live-dot ${liveConnected ? "online" : "offline"}`}>{liveConnected ? "LIVE" : "RECONNECTING"}</span>
+              <span className="mc-chip accent">Thread View</span>
+              <span className="mc-chip info">codex app style</span>
+            </div>
+            <h1 className="mc-hero-title">Thread: {threadId}</h1>
+            <p className="mc-hero-subtitle">
+              这里是持续对话的主窗口。保留流式输出、续接同一线程、事件时间线和调试流，但把阅读优先级做成更接近 `codex app` 的沉浸式体验。
+            </p>
+          </div>
+
+          <div className="mc-stat-strip">
+            <div className="mc-stat-pill">
+              <span className="mc-stat-label">messages</span>
+              <span className="mc-stat-value">{messageSummary.total}</span>
+            </div>
+            <div className="mc-stat-pill">
+              <span className="mc-stat-label">assistant</span>
+              <span className="mc-stat-value">{messageSummary.assistant}</span>
+            </div>
+            <div className="mc-stat-pill">
+              <span className="mc-stat-label">events</span>
+              <span className="mc-stat-value">{events.length}</span>
+            </div>
+          </div>
         </div>
+
         <div className="thread-meta-row">
-          <span>消息 {messageSummary.total}</span>
-          <span>用户 {messageSummary.user}</span>
-          <span>助手 {messageSummary.assistant}</span>
-          <span>事件 {events.length}</span>
+          <span>用户消息 {messageSummary.user}</span>
+          <span>完成事件 {completedEvents}</span>
+          <span className="code">{projectSlug ?? "project unknown"}</span>
         </div>
         <div className="thread-action-row">
           <button type="button" className="thread-btn" onClick={() => void refresh()}>
@@ -488,7 +534,8 @@ export default function ThreadLive({ threadId }: Props) {
 
       <section className="thread-layout">
         <article className="panel terminal-shell">
-          <div className="terminal-head">codex-cli transcript</div>
+          <div className="terminal-head">codex transcript</div>
+          <div className="terminal-subhead">流式打印优先，时间线和调试流退到侧栏与折叠区，减少阅读打断。</div>
           <div className="terminal-transcript" ref={transcriptRef}>
             {loading ? <div className="terminal-empty">加载中...</div> : null}
             {!loading && renderedMessages.length === 0 ? <div className="terminal-empty">暂无可展示的对话消息</div> : null}
@@ -555,23 +602,60 @@ export default function ThreadLive({ threadId }: Props) {
           ) : null}
         </article>
 
-        {showTimeline ? (
-          <aside className="panel timeline-shell">
-            <div className="timeline-head">event timeline</div>
-            <div className="timeline-list">
-              {events.map((event) => (
-                <div key={event.event_id} className="timeline-item">
-                  <div className="timeline-type">{event.event_type}</div>
-                  <div className="timeline-time">{formatTime(event.event_ts)}</div>
-                  <div className="timeline-meta">
-                    <span>{event.status ?? "-"}</span>
-                    {event.turn_id ? <span className="code">{event.turn_id}</span> : null}
-                  </div>
-                </div>
-              ))}
+        <aside className="thread-sidebar">
+          <section className="panel mc-sidebar-card">
+            <div className="mc-section-head">
+              <div>
+                <h2 className="mc-section-title">线程摘要</h2>
+                <p className="mc-section-subtitle">把进入线程时最想看的东西放在右侧第一屏。</p>
+              </div>
             </div>
-          </aside>
-        ) : null}
+            <div className="mc-thread-list">
+              <div className="mc-thread-item">
+                <div className="mc-thread-item-head">
+                  <span className="mc-thread-title">第一句提问</span>
+                  <span className="mc-chip info">history label</span>
+                </div>
+                <div className="mc-thread-snippet">{firstUserPrompt ?? "暂无用户提问"}</div>
+              </div>
+              <div className="mc-thread-item">
+                <div className="mc-thread-item-head">
+                  <span className="mc-thread-title">最近一段回复</span>
+                  <span className="mc-chip accent">assistant</span>
+                </div>
+                <div className="mc-thread-snippet">{latestAssistantMessage ?? "等待 Codex 输出中..."}</div>
+              </div>
+            </div>
+          </section>
+
+          {showTimeline ? (
+            <section className="panel timeline-shell">
+              <div className="timeline-head">event timeline</div>
+              <div className="timeline-list">
+                {events.map((event) => (
+                  <div key={event.event_id} className="timeline-item">
+                    <div className="timeline-type">{event.event_type}</div>
+                    <div className="timeline-time">{formatTime(event.event_ts)}</div>
+                    <div className="timeline-meta">
+                      <span>{event.status ?? "-"}</span>
+                      {event.turn_id ? <span className="code">{event.turn_id}</span> : null}
+                    </div>
+                  </div>
+                ))}
+                {events.length === 0 ? <div className="terminal-empty">暂无事件时间线</div> : null}
+              </div>
+            </section>
+          ) : (
+            <section className="panel mc-sidebar-card">
+              <div className="mc-section-head">
+                <div>
+                  <h2 className="mc-section-title">事件时间线</h2>
+                  <p className="mc-section-subtitle">当前已折叠。需要时再展开，避免抢占对话阅读空间。</p>
+                </div>
+              </div>
+            </section>
+          )}
+        </aside>
       </section>
     </main>
   );
