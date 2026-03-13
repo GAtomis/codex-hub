@@ -2360,6 +2360,29 @@ main {
   gap: 8px;
 }
 
+.terminal-prefix-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.terminal-attention-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border: 2px solid rgba(57, 42, 14, 0.72);
+  background: linear-gradient(180deg, #ffe38a 0%, #d8ad3b 100%);
+  color: #3a2910;
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18);
+}
+
 .terminal-bubble {
   margin: 0;
   border-radius: 0;
@@ -2397,6 +2420,18 @@ main {
   border-color: #7db2ee;
   background: linear-gradient(180deg, #4c84be 0%, var(--mc-user) 100%);
   color: #e8f3ff;
+}
+
+.terminal-bubble.reply-beacon {
+  border-color: #f1d067;
+  background:
+    linear-gradient(180deg, rgba(58, 47, 18, 0.2), rgba(34, 44, 55, 0)),
+    linear-gradient(180deg, #29323d 0%, var(--mc-assistant) 100%);
+  box-shadow:
+    inset 0 -2px 0 rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(241, 208, 103, 0.28),
+    0 0 18px rgba(241, 208, 103, 0.18);
+  animation: mcReplyBeaconPulse 2.6s ease-in-out infinite;
 }
 
 .terminal-pending-line {
@@ -3257,6 +3292,173 @@ main {
 @media (max-width: 980px) {
   .mc-lifecycle-grid,
   .mc-retired-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mc-textarea {
+  min-height: 120px;
+  resize: vertical;
+  font: inherit;
+}
+
+.badge.pending {
+  background: rgba(255, 255, 255, 0.55);
+  color: #4c3a28;
+}
+
+.mc-mission-list-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  align-items: start;
+}
+
+.mc-mission-form,
+.mc-mission-list,
+.mc-mission-main,
+.mc-mission-rail,
+.mc-mission-aside {
+  min-width: 0;
+}
+
+.mc-mission-form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.mc-mission-project-drafts {
+  display: grid;
+  gap: 12px;
+}
+
+.mc-mission-project-draft,
+.mc-mission-note-card,
+.mc-mission-card,
+.mc-mission-project-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 3px solid rgba(0, 0, 0, 0.14);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.28),
+    rgba(255, 255, 255, 0.16)
+  );
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.08);
+}
+
+.mc-mission-card {
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.mc-mission-card:hover,
+.mc-mission-project-card:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.08),
+    0 8px 18px rgba(69, 47, 22, 0.14);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.4),
+    rgba(243, 231, 204, 0.2)
+  );
+}
+
+.mc-mission-draft-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mc-mission-draft-goal {
+  grid-column: 1 / -1;
+}
+
+.mc-mission-shell {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.6fr) minmax(320px, 0.86fr);
+  align-items: start;
+}
+
+.mc-mission-rail,
+.mc-mission-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 220px);
+}
+
+.mc-mission-main {
+  min-width: 0;
+}
+
+.mc-mission-project-card {
+  width: 100%;
+  text-align: left;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.mc-mission-project-card.active {
+  border-color: rgba(134, 104, 72, 0.48);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.5),
+    rgba(232, 214, 181, 0.3)
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.08),
+    0 10px 22px rgba(69, 47, 22, 0.16);
+}
+
+.mc-mission-status-actions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mc-mission-note-grid {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 1350px) {
+  .mc-mission-shell {
+    grid-template-columns: minmax(240px, 0.72fr) minmax(0, 1fr);
+  }
+
+  .mc-mission-aside {
+    grid-column: 1 / -1;
+    max-height: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .mc-mission-list-layout,
+  .mc-mission-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .mc-mission-rail,
+  .mc-mission-aside {
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .mc-mission-draft-grid,
+  .mc-mission-status-actions {
     grid-template-columns: 1fr;
   }
 }

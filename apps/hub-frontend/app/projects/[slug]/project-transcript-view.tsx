@@ -49,6 +49,7 @@ type Props = {
   } | null;
   filteredThreadsCount: number;
   transcriptSubtitle: string;
+  waitingForUser: boolean;
   onOpenHistory: () => void;
   formatTime: (value: string) => string;
   formatDuration: (value?: number) => string;
@@ -471,12 +472,29 @@ export default function ProjectTranscriptView({
   lastTurnSummary,
   filteredThreadsCount,
   transcriptSubtitle,
+  waitingForUser,
   onOpenHistory,
   formatTime,
   formatDuration,
   transcriptRef,
 }: Props) {
   const [viewMode, setViewMode] = useState<TranscriptViewMode>("all");
+
+  const highlightedAssistantMessageId = useMemo(() => {
+    if (!waitingForUser) {
+      return null;
+    }
+    return (
+      [...renderedMessages]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === "assistant" &&
+            message.status !== "running" &&
+            message.text.trim(),
+        )?.messageId ?? null
+    );
+  }, [renderedMessages, waitingForUser]);
 
   const turnGroups = useMemo(() => {
     const baseItems = buildRenderItems(transcript, renderedMessages);
@@ -620,19 +638,28 @@ export default function ProjectTranscriptView({
               if (item.kind === "message") {
                 const isStreamingAssistant =
                   item.message.messageId === activeAssistantMessageId;
+                const isReplyBeacon =
+                  item.message.messageId === highlightedAssistantMessageId;
                 return (
                   <div
                     key={item.key}
-                    className={`terminal-row ${item.message.role} ${isStreamingAssistant ? "streaming" : ""}`}
+                    className={`terminal-row ${item.message.role} ${isStreamingAssistant ? "streaming" : ""} ${isReplyBeacon ? "reply-beacon" : ""}`}
                   >
                     <div className="terminal-prefix">
-                      {item.message.role === "user" ? "you >" : "codex >"}
-                      <span className="terminal-time">
-                        {formatTime(item.message.timestamp)}
+                      <span>{item.message.role === "user" ? "you >" : "codex >"}</span>
+                      <span className="terminal-prefix-meta">
+                        <span className="terminal-time">
+                          {formatTime(item.message.timestamp)}
+                        </span>
+                        {isReplyBeacon ? (
+                          <span className="terminal-attention-chip">
+                            等待你的下一步
+                          </span>
+                        ) : null}
                       </span>
                     </div>
                     <pre
-                      className={`terminal-bubble ${item.message.role} ${isStreamingAssistant ? "streaming" : ""}`}
+                      className={`terminal-bubble ${item.message.role} ${isStreamingAssistant ? "streaming" : ""} ${isReplyBeacon ? "reply-beacon" : ""}`}
                     >
                       {item.message.text}
                       {isStreamingAssistant ? <span className="terminal-cursor" /> : null}

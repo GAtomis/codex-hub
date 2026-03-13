@@ -117,6 +117,24 @@ export const describeAppError = (message: string): string => {
   if (raw.includes("directory_picker_failed")) {
     return "打开本地文件夹选择器失败。请重试，或直接手动填写项目路径。";
   }
+  if (raw.includes("mission_not_found")) {
+    return "目标 Mission 不存在。请刷新列表后重新进入，或确认这个 Mission 没有被删除。";
+  }
+  if (raw.includes("duplicate_mission_project")) {
+    return "同一个 Mission 里不能重复添加同一个项目。请检查项目列表。";
+  }
+  if (raw.includes("mission_projects_not_found")) {
+    return "Mission 中包含未注册项目。请先在首页完成项目注册，再创建 Mission。";
+  }
+  if (raw.includes("invalid_mission_dependency")) {
+    return "Mission 项目依赖关系无效。前置项目和目标项目都必须属于同一个 Mission，且不能自依赖。";
+  }
+  if (raw.includes("mission_project_not_found")) {
+    return "当前 Mission 中找不到这个项目。请刷新页面后重试。";
+  }
+  if (raw.includes("invalid_mission_handoff_project")) {
+    return "Handoff 目标无效。发送方和接收方都必须属于当前 Mission。";
+  }
   return raw;
 };
 
@@ -173,7 +191,7 @@ const requestPost = async <T>(
   args?: {
     execToken?: string | null;
     signal?: AbortSignal;
-    method?: "POST" | "PUT";
+    method?: "POST" | "PUT" | "PATCH";
   },
 ): Promise<T> => {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -210,6 +228,80 @@ export type Overview = {
     error_message: string | null;
     event_ts: string;
   }>;
+};
+
+export type MissionSummary = {
+  missionId: string;
+  title: string;
+  goal: string;
+  description: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  projectCount: number;
+  waitingProjectCount: number;
+  activeProjectCount: number;
+  suggestedFocusProject: string | null;
+};
+
+export type MissionDependency = {
+  fromProjectSlug: string;
+  toProjectSlug: string;
+};
+
+export type MissionProject = {
+  missionProjectId: string;
+  projectSlug: string;
+  projectName: string;
+  projectRole: string | null;
+  taskGoal: string;
+  status: string;
+  threadId: string | null;
+  latestSummary: string | null;
+  latestChangeCount: number;
+  waitingForUser: boolean;
+  updatedAt: string;
+};
+
+export type MissionHandoff = {
+  handoffId: string;
+  fromProjectSlug: string;
+  toProjectSlug: string;
+  title: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  sourceThreadId: string | null;
+  sourceTurnId: string | null;
+  createdAt: string;
+};
+
+export type MissionDetail = {
+  mission: {
+    missionId: string;
+    title: string;
+    goal: string;
+    description: string | null;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  projects: MissionProject[];
+  dependencies: MissionDependency[];
+  handoffs: MissionHandoff[];
+  suggestedFocusProject: string | null;
+};
+
+export type CreateMissionInput = {
+  title: string;
+  goal: string;
+  description?: string;
+  status?: "draft" | "active" | "blocked" | "completed";
+  projects: Array<{
+    projectSlug: string;
+    projectRole?: string;
+    taskGoal: string;
+  }>;
+  dependencies?: MissionDependency[];
 };
 
 export type Project = {
@@ -570,6 +662,59 @@ export const fetchThreadTranscript = (
 ): Promise<ThreadTranscript> =>
   request<ThreadTranscript>(
     `/v1/threads/${encodeURIComponent(threadId)}/transcript?limit=${encodeURIComponent(String(args?.limit ?? 600))}`,
+  );
+
+export const fetchMissions = (): Promise<MissionSummary[]> =>
+  request<MissionSummary[]>("/v1/missions");
+
+export const createMission = (input: CreateMissionInput): Promise<MissionDetail> =>
+  requestPost<MissionDetail>("/v1/missions", input);
+
+export const fetchMission = (missionId: string): Promise<MissionDetail> =>
+  request<MissionDetail>(`/v1/missions/${encodeURIComponent(missionId)}`);
+
+export const updateMissionProject = (
+  missionId: string,
+  projectSlug: string,
+  input: {
+    projectRole?: string;
+    taskGoal?: string;
+    status?: "pending" | "ready" | "running" | "waiting_user" | "blocked" | "completed" | "failed";
+    threadId?: string;
+    latestSummary?: string;
+    latestChangeCount?: number;
+    waitingForUser?: boolean;
+  },
+): Promise<MissionDetail> =>
+  requestPost<MissionDetail>(
+    `/v1/missions/${encodeURIComponent(missionId)}/projects/${encodeURIComponent(projectSlug)}`,
+    input,
+    { method: "PATCH" },
+  );
+
+export const createMissionHandoff = (
+  missionId: string,
+  input: {
+    fromProjectSlug: string;
+    toProjectSlug: string;
+    title: string;
+    summary: string;
+    sourceThreadId?: string;
+    sourceTurnId?: string;
+    payload?: Record<string, unknown>;
+  },
+): Promise<MissionHandoff> =>
+  requestPost<MissionHandoff>(
+    `/v1/missions/${encodeURIComponent(missionId)}/handoffs`,
+    input,
+  );
+
+export const fetchMissionProjectHandoffs = (
+  missionId: string,
+  projectSlug: string,
+): Promise<MissionHandoff[]> =>
+  request<MissionHandoff[]>(
+    `/v1/missions/${encodeURIComponent(missionId)}/projects/${encodeURIComponent(projectSlug)}/handoffs`,
   );
 
 export const registerProject = (input: {

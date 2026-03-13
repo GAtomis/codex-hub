@@ -88,6 +88,55 @@ const pickDirectorySchema = z.object({
   prompt: z.string().min(1).max(120).optional(),
 });
 
+const missionProjectInputSchema = z.object({
+  projectSlug: z.string().min(1),
+  projectRole: z.string().min(1).max(80).optional(),
+  taskGoal: z.string().min(1).max(2000),
+});
+
+const missionDependencyInputSchema = z.object({
+  fromProjectSlug: z.string().min(1),
+  toProjectSlug: z.string().min(1),
+});
+
+const createMissionSchema = z.object({
+  title: z.string().min(1).max(200),
+  goal: z.string().min(1).max(4000),
+  description: z.string().max(8000).optional(),
+  status: z.enum(["draft", "active", "blocked", "completed"]).optional(),
+  projects: z.array(missionProjectInputSchema).min(1).max(12),
+  dependencies: z.array(missionDependencyInputSchema).max(40).optional(),
+});
+
+const missionParamsSchema = z.object({
+  missionId: z.string().min(1),
+});
+
+const missionProjectParamsSchema = z.object({
+  missionId: z.string().min(1),
+  projectSlug: z.string().min(1),
+});
+
+const patchMissionProjectSchema = z.object({
+  projectRole: z.string().min(1).max(80).optional(),
+  taskGoal: z.string().min(1).max(2000).optional(),
+  status: z.enum(["pending", "ready", "running", "waiting_user", "blocked", "completed", "failed"]).optional(),
+  threadId: z.string().min(1).optional(),
+  latestSummary: z.string().min(1).max(4000).optional(),
+  latestChangeCount: z.coerce.number().int().min(0).max(10000).optional(),
+  waitingForUser: z.boolean().optional(),
+});
+
+const createMissionHandoffSchema = z.object({
+  fromProjectSlug: z.string().min(1),
+  toProjectSlug: z.string().min(1),
+  title: z.string().min(1).max(200),
+  summary: z.string().min(1).max(8000),
+  sourceThreadId: z.string().min(1).optional(),
+  sourceTurnId: z.string().min(1).optional(),
+  payload: z.record(z.unknown()).optional(),
+});
+
 const projectLifecyclePreviewParamsSchema = z.object({
   slug: z.string().min(1),
 });
@@ -1042,6 +1091,179 @@ const persistChangeSummaryForTurn = async (
   });
 };
 
+const MISSION_STATUS_PRIORITY = new Map<string, number>([
+  ["waiting_user", 0],
+  ["failed", 1],
+  ["running", 2],
+  ["ready", 3],
+  ["blocked", 4],
+  ["pending", 5],
+  ["completed", 6],
+]);
+
+const missionProjectPriority = (status?: string | null): number =>
+  MISSION_STATUS_PRIORITY.get((status ?? "pending").toLowerCase()) ?? 99;
+
+const normalizeTimestamp = (value: string | Date | null | undefined): string => {
+  if (!value) {
+    return new Date(0).toISOString();
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+};
+
+const resolveMissionSuggestedFocusProject = <T extends { projectSlug: string; status: string; updatedAt: string | Date }>(
+  projects: T[],
+): string | null => {
+  return [...projects]
+    .sort(
+      (left, right) =>
+        missionProjectPriority(left.status) - missionProjectPriority(right.status) ||
+        normalizeTimestamp(right.updatedAt).localeCompare(
+          normalizeTimestamp(left.updatedAt),
+        ),
+    )[0]?.projectSlug ?? null;
+};
+
+const fetchMissionDetail = async (missionId: string) => {
+  const missionRes = await pool.query<{
+    mission_id: string;
+    title: string;
+    goal: string;
+    description: string | null;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `
+    SELECT mission_id, title, goal, description, status, created_at, updated_at
+    FROM missions
+    WHERE mission_id = $1
+    LIMIT 1
+    `,
+    [missionId],
+  );
+  const mission = missionRes.rows[0];
+  if (!mission) {
+    const error = new Error("mission_not_found");
+    error.name = "mission_not_found";
+    throw error;
+  }
+
+  const [projectsRes, dependenciesRes, handoffsRes] = await Promise.all([
+    pool.query<{
+      mission_project_id: string;
+      project_slug: string;
+      project_name: string;
+      project_role: string | null;
+      task_goal: string;
+      status: string;
+      thread_id: string | null;
+      latest_summary: string | null;
+      latest_change_count: number;
+      waiting_for_user: boolean;
+      updated_at: string;
+    }>(
+      `
+      SELECT
+        mp.mission_project_id,
+        mp.project_slug,
+        p.project_name,
+        mp.project_role,
+        mp.task_goal,
+        mp.status,
+        mp.thread_id,
+        mp.latest_summary,
+        mp.latest_change_count,
+        mp.waiting_for_user,
+        mp.updated_at
+      FROM mission_projects mp
+      INNER JOIN projects p ON p.project_slug = mp.project_slug
+      WHERE mp.mission_id = $1
+      ORDER BY mp.updated_at DESC, p.project_name ASC
+      `,
+      [missionId],
+    ),
+    pool.query<{
+      from_project_slug: string;
+      to_project_slug: string;
+    }>(
+      `
+      SELECT from_project_slug, to_project_slug
+      FROM mission_project_dependencies
+      WHERE mission_id = $1
+      ORDER BY from_project_slug ASC, to_project_slug ASC
+      `,
+      [missionId],
+    ),
+    pool.query<{
+      handoff_id: string;
+      from_project_slug: string;
+      to_project_slug: string;
+      title: string;
+      summary: string;
+      payload_json: Record<string, unknown>;
+      source_thread_id: string | null;
+      source_turn_id: string | null;
+      created_at: string;
+    }>(
+      `
+      SELECT handoff_id, from_project_slug, to_project_slug, title, summary, payload_json, source_thread_id, source_turn_id, created_at
+      FROM mission_handoffs
+      WHERE mission_id = $1
+      ORDER BY created_at DESC
+      `,
+      [missionId],
+    ),
+  ]);
+
+  const projects = projectsRes.rows.map((row) => ({
+    missionProjectId: row.mission_project_id,
+    projectSlug: row.project_slug,
+    projectName: row.project_name,
+    projectRole: row.project_role,
+    taskGoal: row.task_goal,
+    status: row.status,
+    threadId: row.thread_id,
+    latestSummary: row.latest_summary,
+    latestChangeCount: Number(row.latest_change_count ?? 0),
+    waitingForUser: Boolean(row.waiting_for_user),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  }));
+
+  return {
+    mission: {
+      missionId: mission.mission_id,
+      title: mission.title,
+      goal: mission.goal,
+      description: mission.description,
+      status: mission.status,
+      createdAt: normalizeTimestamp(mission.created_at),
+      updatedAt: normalizeTimestamp(mission.updated_at),
+    },
+    projects,
+    dependencies: dependenciesRes.rows.map((row) => ({
+      fromProjectSlug: row.from_project_slug,
+      toProjectSlug: row.to_project_slug,
+    })),
+    handoffs: handoffsRes.rows.map((row) => ({
+      handoffId: row.handoff_id,
+      fromProjectSlug: row.from_project_slug,
+      toProjectSlug: row.to_project_slug,
+      title: row.title,
+      summary: row.summary,
+      payload: row.payload_json ?? {},
+      sourceThreadId: row.source_thread_id,
+      sourceTurnId: row.source_turn_id,
+      createdAt: normalizeTimestamp(row.created_at),
+    })),
+    suggestedFocusProject: resolveMissionSuggestedFocusProject(projects),
+  };
+};
+
 export const registerRoutes = async (app: FastifyInstance): Promise<void> => {
   validateIngestApiKey(app);
   await reconcileRuntimeState();
@@ -1419,6 +1641,397 @@ export const registerRoutes = async (app: FastifyInstance): Promise<void> => {
       })),
       recentEvents: recentRes.rows,
     };
+  });
+
+  app.get("/v1/missions", async () => {
+    const missionsRes = await pool.query<{
+      mission_id: string;
+      title: string;
+      goal: string;
+      description: string | null;
+      status: string;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `
+      SELECT mission_id, title, goal, description, status, created_at, updated_at
+      FROM missions
+      ORDER BY updated_at DESC, created_at DESC
+      `,
+    );
+
+    const missionIds = missionsRes.rows.map((row) => row.mission_id);
+    const missionProjectsRes = missionIds.length
+      ? await pool.query<{
+          mission_id: string;
+          project_slug: string;
+          status: string;
+          updated_at: string;
+          waiting_for_user: boolean;
+        }>(
+          `
+          SELECT mission_id, project_slug, status, updated_at, waiting_for_user
+          FROM mission_projects
+          WHERE mission_id = ANY($1::text[])
+          `,
+          [missionIds],
+        )
+      : { rows: [] };
+
+    const groupedProjects = new Map<string, Array<{
+      projectSlug: string;
+      status: string;
+      updatedAt: string;
+      waitingForUser: boolean;
+    }>>();
+    for (const row of missionProjectsRes.rows) {
+      const list = groupedProjects.get(row.mission_id) ?? [];
+      list.push({
+        projectSlug: row.project_slug,
+        status: row.status,
+        updatedAt: normalizeTimestamp(row.updated_at),
+        waitingForUser: Boolean(row.waiting_for_user),
+      });
+      groupedProjects.set(row.mission_id, list);
+    }
+
+    return missionsRes.rows.map((row) => {
+      const projects = groupedProjects.get(row.mission_id) ?? [];
+      return {
+        missionId: row.mission_id,
+        title: row.title,
+        goal: row.goal,
+        description: row.description,
+        status: row.status,
+        createdAt: normalizeTimestamp(row.created_at),
+        updatedAt: normalizeTimestamp(row.updated_at),
+        projectCount: projects.length,
+        waitingProjectCount: projects.filter((item) => item.waitingForUser || item.status === "waiting_user").length,
+        activeProjectCount: projects.filter((item) => ["running", "waiting_user", "ready"].includes(item.status)).length,
+        suggestedFocusProject: resolveMissionSuggestedFocusProject(projects),
+      };
+    });
+  });
+
+  app.post("/v1/missions", async (request, reply) => {
+    const body = createMissionSchema.safeParse(request.body ?? {});
+    if (!body.success) {
+      reply.code(400);
+      return { error: "invalid_body", detail: body.error.flatten() };
+    }
+
+    const projectSlugs = body.data.projects.map((item) => item.projectSlug);
+    const uniqueProjectSlugs = Array.from(new Set(projectSlugs));
+    if (uniqueProjectSlugs.length !== projectSlugs.length) {
+      reply.code(400);
+      return { error: "duplicate_mission_project" };
+    }
+
+    const existingProjects = await pool.query<{ project_slug: string }>(
+      `SELECT project_slug FROM projects WHERE project_slug = ANY($1::text[])`,
+      [uniqueProjectSlugs],
+    );
+    const existingSet = new Set(existingProjects.rows.map((row) => row.project_slug));
+    const missingProjects = uniqueProjectSlugs.filter((slug) => !existingSet.has(slug));
+    if (missingProjects.length > 0) {
+      reply.code(400);
+      return { error: "mission_projects_not_found", missingProjects };
+    }
+
+    const dependencies = body.data.dependencies ?? [];
+    for (const dependency of dependencies) {
+      if (!existingSet.has(dependency.fromProjectSlug) || !existingSet.has(dependency.toProjectSlug)) {
+        reply.code(400);
+        return { error: "invalid_mission_dependency", dependency };
+      }
+      if (dependency.fromProjectSlug === dependency.toProjectSlug) {
+        reply.code(400);
+        return { error: "invalid_self_dependency", dependency };
+      }
+    }
+
+    const dependentTargets = new Set(dependencies.map((item) => item.toProjectSlug));
+    const missionId = randomUUID();
+
+    await pool.query("BEGIN");
+    try {
+      await pool.query(
+        `
+        INSERT INTO missions (mission_id, title, goal, description, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+        `,
+        [
+          missionId,
+          body.data.title,
+          body.data.goal,
+          body.data.description ?? null,
+          body.data.status ?? "active",
+        ],
+      );
+
+      for (const project of body.data.projects) {
+        await pool.query(
+          `
+          INSERT INTO mission_projects (
+            mission_project_id,
+            mission_id,
+            project_slug,
+            project_role,
+            task_goal,
+            status,
+            created_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+          `,
+          [
+            randomUUID(),
+            missionId,
+            project.projectSlug,
+            project.projectRole ?? null,
+            project.taskGoal,
+            dependentTargets.has(project.projectSlug) ? "blocked" : "ready",
+          ],
+        );
+      }
+
+      for (const dependency of dependencies) {
+        await pool.query(
+          `
+          INSERT INTO mission_project_dependencies (
+            dependency_id,
+            mission_id,
+            from_project_slug,
+            to_project_slug,
+            created_at
+          )
+          VALUES ($1, $2, $3, $4, NOW())
+          `,
+          [randomUUID(), missionId, dependency.fromProjectSlug, dependency.toProjectSlug],
+        );
+      }
+
+      await pool.query("COMMIT");
+    } catch (error) {
+      await pool.query("ROLLBACK");
+      throw error;
+    }
+
+    return await fetchMissionDetail(missionId);
+  });
+
+  app.get("/v1/missions/:missionId", async (request, reply) => {
+    const params = missionParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      reply.code(400);
+      return { error: "invalid_params" };
+    }
+
+    try {
+      return await fetchMissionDetail(params.data.missionId);
+    } catch (error) {
+      if (error instanceof Error && error.name === "mission_not_found") {
+        reply.code(404);
+        return { error: "mission_not_found" };
+      }
+      throw error;
+    }
+  });
+
+  app.patch("/v1/missions/:missionId/projects/:projectSlug", async (request, reply) => {
+    const params = missionProjectParamsSchema.safeParse(request.params);
+    const body = patchMissionProjectSchema.safeParse(request.body ?? {});
+    if (!params.success || !body.success) {
+      reply.code(400);
+      return { error: "invalid_request" };
+    }
+
+    const existing = await pool.query<{ mission_project_id: string }>(
+      `
+      SELECT mission_project_id
+      FROM mission_projects
+      WHERE mission_id = $1 AND project_slug = $2
+      LIMIT 1
+      `,
+      [params.data.missionId, params.data.projectSlug],
+    );
+    if (!existing.rows[0]) {
+      reply.code(404);
+      return { error: "mission_project_not_found" };
+    }
+
+    const updates: string[] = [];
+    const values: unknown[] = [params.data.missionId, params.data.projectSlug];
+    const setValue = (column: string, value: unknown) => {
+      values.push(value);
+      updates.push(`${column} = $${values.length}`);
+    };
+
+    if (body.data.projectRole !== undefined) setValue("project_role", body.data.projectRole);
+    if (body.data.taskGoal !== undefined) setValue("task_goal", body.data.taskGoal);
+    if (body.data.status !== undefined) setValue("status", body.data.status);
+    if (body.data.threadId !== undefined) setValue("thread_id", body.data.threadId);
+    if (body.data.latestSummary !== undefined) setValue("latest_summary", body.data.latestSummary);
+    if (body.data.latestChangeCount !== undefined) setValue("latest_change_count", body.data.latestChangeCount);
+    if (body.data.waitingForUser !== undefined) setValue("waiting_for_user", body.data.waitingForUser);
+
+    if (updates.length === 0) {
+      reply.code(400);
+      return { error: "empty_patch" };
+    }
+
+    updates.push("updated_at = NOW()");
+    await pool.query(
+      `
+      UPDATE mission_projects
+      SET ${updates.join(", ")}
+      WHERE mission_id = $1 AND project_slug = $2
+      `,
+      values,
+    );
+    await pool.query(`UPDATE missions SET updated_at = NOW() WHERE mission_id = $1`, [
+      params.data.missionId,
+    ]);
+
+    return await fetchMissionDetail(params.data.missionId);
+  });
+
+  app.post("/v1/missions/:missionId/handoffs", async (request, reply) => {
+    const params = missionParamsSchema.safeParse(request.params);
+    const body = createMissionHandoffSchema.safeParse(request.body ?? {});
+    if (!params.success || !body.success) {
+      reply.code(400);
+      return { error: "invalid_request" };
+    }
+
+    const missionProjects = await pool.query<{ project_slug: string }>(
+      `SELECT project_slug FROM mission_projects WHERE mission_id = $1`,
+      [params.data.missionId],
+    );
+    if (missionProjects.rows.length === 0) {
+      reply.code(404);
+      return { error: "mission_not_found" };
+    }
+    const slugSet = new Set(missionProjects.rows.map((row) => row.project_slug));
+    if (!slugSet.has(body.data.fromProjectSlug) || !slugSet.has(body.data.toProjectSlug)) {
+      reply.code(400);
+      return { error: "handoff_project_out_of_mission" };
+    }
+
+    const handoffId = randomUUID();
+    await pool.query(
+      `
+      INSERT INTO mission_handoffs (
+        handoff_id,
+        mission_id,
+        from_project_slug,
+        to_project_slug,
+        title,
+        summary,
+        payload_json,
+        source_thread_id,
+        source_turn_id,
+        created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, NOW())
+      `,
+      [
+        handoffId,
+        params.data.missionId,
+        body.data.fromProjectSlug,
+        body.data.toProjectSlug,
+        body.data.title,
+        body.data.summary,
+        JSON.stringify(body.data.payload ?? {}),
+        body.data.sourceThreadId ?? null,
+        body.data.sourceTurnId ?? null,
+      ],
+    );
+    await pool.query(`UPDATE missions SET updated_at = NOW() WHERE mission_id = $1`, [
+      params.data.missionId,
+    ]);
+
+    const handoffRes = await pool.query<{
+      handoff_id: string;
+      from_project_slug: string;
+      to_project_slug: string;
+      title: string;
+      summary: string;
+      payload_json: Record<string, unknown>;
+      source_thread_id: string | null;
+      source_turn_id: string | null;
+      created_at: string;
+    }>(
+      `
+      SELECT handoff_id, from_project_slug, to_project_slug, title, summary, payload_json, source_thread_id, source_turn_id, created_at
+      FROM mission_handoffs
+      WHERE handoff_id = $1
+      LIMIT 1
+      `,
+      [handoffId],
+    );
+
+    const row = handoffRes.rows[0];
+    return {
+      handoffId: row.handoff_id,
+      fromProjectSlug: row.from_project_slug,
+      toProjectSlug: row.to_project_slug,
+      title: row.title,
+      summary: row.summary,
+      payload: row.payload_json ?? {},
+      sourceThreadId: row.source_thread_id,
+      sourceTurnId: row.source_turn_id,
+      createdAt: normalizeTimestamp(row.created_at),
+    };
+  });
+
+  app.get("/v1/missions/:missionId/projects/:projectSlug/handoffs", async (request, reply) => {
+    const params = missionProjectParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      reply.code(400);
+      return { error: "invalid_params" };
+    }
+
+    const missionExists = await pool.query<{ mission_id: string }>(
+      `SELECT mission_id FROM missions WHERE mission_id = $1 LIMIT 1`,
+      [params.data.missionId],
+    );
+    if (!missionExists.rows[0]) {
+      reply.code(404);
+      return { error: "mission_not_found" };
+    }
+
+    const result = await pool.query<{
+      handoff_id: string;
+      from_project_slug: string;
+      to_project_slug: string;
+      title: string;
+      summary: string;
+      payload_json: Record<string, unknown>;
+      source_thread_id: string | null;
+      source_turn_id: string | null;
+      created_at: string;
+    }>(
+      `
+      SELECT handoff_id, from_project_slug, to_project_slug, title, summary, payload_json, source_thread_id, source_turn_id, created_at
+      FROM mission_handoffs
+      WHERE mission_id = $1 AND to_project_slug = $2
+      ORDER BY created_at DESC
+      `,
+      [params.data.missionId, params.data.projectSlug],
+    );
+
+    return result.rows.map((row) => ({
+      handoffId: row.handoff_id,
+      fromProjectSlug: row.from_project_slug,
+      toProjectSlug: row.to_project_slug,
+      title: row.title,
+      summary: row.summary,
+      payload: row.payload_json ?? {},
+      sourceThreadId: row.source_thread_id,
+      sourceTurnId: row.source_turn_id,
+      createdAt: normalizeTimestamp(row.created_at),
+    }));
   });
 
   app.get("/v1/projects", async (request, reply) => {

@@ -406,6 +406,7 @@ export default function ExecPanel({
   const activeAssistantIdRef = useRef<string | null>(null);
   const cancelRequestedRef = useRef(false);
   const currentThreadIdRef = useRef<string | null>(null);
+  const preserveBlankSessionRef = useRef(false);
 
   useEffect(() => {
     currentThreadIdRef.current = currentThreadId;
@@ -449,16 +450,41 @@ export default function ExecPanel({
   );
 
   useEffect(() => {
+    // Reset project-scoped state first so switching projects never flashes the previous console.
+    setLoading(false);
+    setError(null);
+    setCurrentTaskId(null);
+    setCurrentThreadId(null);
+    currentThreadIdRef.current = null;
+    setThreads([]);
+    setTasks([]);
+    setSelectedHistoryThreadId("");
+    setMessages([]);
+    setTranscript(null);
+    setLastTurnSummary(null);
+    setLiveStdout("");
+    setLiveStderr("");
+    setStreamMeta({});
+    setMentionState(null);
+    setFileMatches([]);
+    activeAssistantIdRef.current = null;
+    abortRef.current = null;
+    preserveBlankSessionRef.current = false;
+
     const rawHistory = window.localStorage.getItem(historyKey(slug));
     if (rawHistory) {
       try {
         const parsed = JSON.parse(rawHistory) as string[];
         if (Array.isArray(parsed)) {
           setPromptHistory(parsed.slice(0, 50));
+        } else {
+          setPromptHistory([]);
         }
       } catch {
-        // ignore
+        setPromptHistory([]);
       }
+    } else {
+      setPromptHistory([]);
     }
 
     const rawToken = window.localStorage.getItem("codex_hub_exec_token");
@@ -484,9 +510,7 @@ export default function ExecPanel({
     }
 
     const rawSessionRail = window.localStorage.getItem(sessionRailKey(slug));
-    if (rawSessionRail === "collapsed") {
-      setSessionRailCollapsed(true);
-    }
+    setSessionRailCollapsed(rawSessionRail === "collapsed");
 
     void loadTasks();
     void loadThreads();
@@ -584,7 +608,7 @@ export default function ExecPanel({
       return;
     }
     transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
-  }, [followTail, liveStdout, liveStderr, messages]);
+  }, [followTail, liveStdout, liveStderr, messages, transcript]);
 
   const onStreamEvent = useCallback((chunk: ExecStreamEvent): void => {
     if (chunk.type === "thread") {
@@ -600,6 +624,7 @@ export default function ExecPanel({
     if (chunk.type === "start") {
       setCurrentTaskId(chunk.taskId);
       if (chunk.threadId) {
+        preserveBlankSessionRef.current = false;
         setCurrentThreadId(chunk.threadId);
       }
       return;
@@ -618,6 +643,7 @@ export default function ExecPanel({
     if (chunk.type === "assistant_delta") {
       setLiveStdout((prev) => appendChunk(prev, chunk.data));
       if (chunk.threadId) {
+        preserveBlankSessionRef.current = false;
         setCurrentThreadId(chunk.threadId);
       }
 
@@ -935,6 +961,7 @@ export default function ExecPanel({
     if (loading) {
       return;
     }
+    preserveBlankSessionRef.current = true;
     setCurrentThreadId(null);
     currentThreadIdRef.current = null;
     setSelectedHistoryThreadId("");
@@ -961,6 +988,7 @@ export default function ExecPanel({
       }
       setError(null);
       setLastTurnSummary(null);
+      preserveBlankSessionRef.current = false;
       setSelectedHistoryThreadId(nextThreadId);
       setCurrentThreadId(nextThreadId);
       currentThreadIdRef.current = nextThreadId;
@@ -1074,6 +1102,23 @@ export default function ExecPanel({
     () => [...threads].sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     [threads],
   );
+  useEffect(() => {
+    if (preserveBlankSessionRef.current) {
+      return;
+    }
+    if (
+      currentThreadId &&
+      orderedThreads.some((thread) => thread.thread_id === currentThreadId)
+    ) {
+      return;
+    }
+    const fallbackThreadId = orderedThreads[0]?.thread_id ?? null;
+    if (!fallbackThreadId) {
+      return;
+    }
+    setCurrentThreadId(fallbackThreadId);
+    currentThreadIdRef.current = fallbackThreadId;
+  }, [currentThreadId, orderedThreads]);
   const runningThreadCount = useMemo(
     () => orderedThreads.filter((thread) => thread.status === "running").length,
     [orderedThreads],
@@ -1615,6 +1660,7 @@ export default function ExecPanel({
           lastTurnSummary={lastTurnSummary}
           filteredThreadsCount={filteredThreads.length}
           transcriptSubtitle={transcriptSubtitle}
+          waitingForUser={transcript?.context.runtime.waitingForUser ?? false}
           onOpenHistory={() => setShowHistoryDrawer(true)}
           formatTime={formatTime}
           formatDuration={formatDuration}

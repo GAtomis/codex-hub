@@ -68,3 +68,59 @@ CREATE INDEX IF NOT EXISTS idx_events_ts ON events(event_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_threads_status_updated ON threads(status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_exec_audit_created ON exec_audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_exec_audit_project_created ON exec_audit_logs(project_slug, created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS missions (
+  mission_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS mission_projects (
+  mission_project_id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+  project_slug TEXT NOT NULL REFERENCES projects(project_slug) ON DELETE CASCADE,
+  project_role TEXT,
+  task_goal TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  thread_id TEXT,
+  latest_summary TEXT,
+  latest_change_count INT NOT NULL DEFAULT 0,
+  waiting_for_user BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (mission_id, project_slug)
+);
+
+CREATE TABLE IF NOT EXISTS mission_project_dependencies (
+  dependency_id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+  from_project_slug TEXT NOT NULL REFERENCES projects(project_slug) ON DELETE CASCADE,
+  to_project_slug TEXT NOT NULL REFERENCES projects(project_slug) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (mission_id, from_project_slug, to_project_slug)
+);
+
+CREATE TABLE IF NOT EXISTS mission_handoffs (
+  handoff_id TEXT PRIMARY KEY,
+  mission_id TEXT NOT NULL REFERENCES missions(mission_id) ON DELETE CASCADE,
+  from_project_slug TEXT NOT NULL REFERENCES projects(project_slug) ON DELETE CASCADE,
+  to_project_slug TEXT NOT NULL REFERENCES projects(project_slug) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  source_thread_id TEXT,
+  source_turn_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_missions_updated ON missions(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mission_projects_mission_updated ON mission_projects(mission_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mission_projects_project ON mission_projects(project_slug, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mission_project_dependencies_mission ON mission_project_dependencies(mission_id);
+CREATE INDEX IF NOT EXISTS idx_mission_handoffs_mission_created ON mission_handoffs(mission_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mission_handoffs_target_created ON mission_handoffs(mission_id, to_project_slug, created_at DESC);

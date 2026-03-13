@@ -664,6 +664,7 @@ export default function WarRoomConsole() {
               ) : (
                 <section className="mc-war-room-tab-panel">
                   <ExecPanel
+                    key={activeRuntime.project.slug}
                     slug={activeRuntime.project.slug}
                     sessionPanelMode="drawer"
                   />

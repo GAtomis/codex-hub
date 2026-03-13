@@ -287,6 +287,9 @@ export default function HomePage() {
           <Link href="/war-room" className="mc-button secondary">
             进入监控室
           </Link>
+          <Link href="/missions" className="mc-button secondary">
+            进入 Mission 室
+          </Link>
           <button type="button" className="mc-button secondary" onClick={() => void refresh()}>
             立即刷新
           </button>
